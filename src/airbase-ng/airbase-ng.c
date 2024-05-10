@@ -2,7 +2,7 @@
  *  802.11 monitor AP
  *  based on airtun-ng
  *
- *  Copyright (C) 2008-2020 Thomas d'Otreppe <tdotreppe@aircrack-ng.org>
+ *  Copyright (C) 2008-2022 Thomas d'Otreppe <tdotreppe@aircrack-ng.org>
  *  Copyright (C) 2008, 2009 Martin Beck <martin.beck2@gmx.de>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -43,17 +43,11 @@
 #endif
 
 #include <sys/types.h>
-#include <sys/socket.h>
 #include <sys/ioctl.h>
-#include <sys/wait.h>
 #include <sys/time.h>
 
-#include <netinet/in.h>
-#include <arpa/inet.h>
 #include <pthread.h>
 #include <unistd.h>
-#include <dirent.h>
-#include <signal.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -62,8 +56,6 @@
 #include <getopt.h>
 #include <sys/file.h>
 #include <fcntl.h>
-
-#include <ctype.h>
 
 #include "aircrack-ng/version.h"
 #include "aircrack-ng/support/pcap_local.h"
@@ -75,7 +67,6 @@
 #include "aircrack-ng/support/communications.h"
 #include "aircrack-ng/support/fragments.h"
 #include "aircrack-ng/osdep/osdep.h"
-#include "aircrack-ng/support/common.h"
 
 #define EXT_IN 0x01
 #define EXT_OUT 0x02
@@ -142,7 +133,7 @@
 
 static const char usage[]
 	= "\n"
-	  "  %s - (C) 2008-2020 Thomas d'Otreppe\n"
+	  "  %s - (C) 2008-2022 Thomas d'Otreppe\n"
 	  "  Original work: Martin Beck\n"
 	  "  https://www.aircrack-ng.org\n"
 	  "\n"
@@ -278,13 +269,6 @@ struct ESSID_list
 	unsigned char len;
 	pESSID_t next;
 	time_t expire;
-};
-
-typedef struct MAC_list * pMAC_t;
-struct MAC_list
-{
-	unsigned char mac[6];
-	pMAC_t next;
 };
 
 #include "aircrack-ng/support/station.h"
@@ -460,29 +444,6 @@ static int capture_packet(unsigned char * packet, int length)
 		flock(fileno(opt.f_cap), LOCK_UN);
 #endif
 	}
-	return 0;
-}
-
-static int addMAC(pMAC_t pMAC, unsigned char * mac)
-{
-	pMAC_t cur = pMAC;
-
-	if (mac == NULL) return -1;
-
-	if (pMAC == NULL) return -1;
-
-	while (cur->next != NULL) cur = cur->next;
-
-	// alloc mem
-	cur->next = (pMAC_t) malloc(sizeof(struct MAC_list));
-	ALLEGE(cur->next != NULL);
-	cur = cur->next;
-
-	// set mac
-	memcpy(cur->mac, mac, 6);
-
-	cur->next = NULL;
-
 	return 0;
 }
 
@@ -667,22 +628,6 @@ static int getESSIDcount(void)
 	}
 
 	ALLEGE(pthread_mutex_unlock(&rESSIDmutex) == 0);
-	return (count);
-}
-
-static int getMACcount(pMAC_t pMAC)
-{
-	pMAC_t cur = pMAC;
-	int count = 0;
-
-	if (pMAC == NULL) return (-1);
-
-	while (cur->next != NULL)
-	{
-		cur = cur->next;
-		count++;
-	}
-
 	return (count);
 }
 
@@ -949,7 +894,6 @@ static int remove_tag(uint8_t * tagged_params,
 					  const uint8_t exclude_tag_id,
 					  size_t * tp_length)
 {
-	REQUIRE(tagged_params != NULL);
 	REQUIRE(tp_length != NULL);
 
 	size_t dst_pos = 0, src_pos = 0;
@@ -1592,7 +1536,7 @@ packet_recv(uint8_t * packet, size_t length, struct AP_conf * apc, int external)
 	uint8_t * buffer;
 	uint8_t essid[256];
 	struct timeval tv1;
-	u_int64_t timestamp;
+	uint64_t timestamp;
 	char fessid[MAX_IE_ELEMENT_SIZE + 1];
 	int seqnum, fragnum, morefrag;
 	int gotsource, gotbssid;
@@ -1949,8 +1893,9 @@ packet_recv(uint8_t * packet, size_t length, struct AP_conf * apc, int external)
 							  10)
 						   == 0)
 				{
-					st_cur->wpa.eapol_size = (uint32_t)(
-						(packet[z + 8 + 2] << 8) + packet[z + 8 + 3] + 4);
+					st_cur->wpa.eapol_size
+						= (uint32_t) ((packet[z + 8 + 2] << 8)
+									  + packet[z + 8 + 3] + 4);
 
 					if ((unsigned) length - z - 10 < st_cur->wpa.eapol_size
 						|| st_cur->wpa.eapol_size == 0 //-V560
@@ -1971,7 +1916,7 @@ packet_recv(uint8_t * packet, size_t length, struct AP_conf * apc, int external)
 						   st_cur->wpa.eapol_size);
 					memset(st_cur->wpa.eapol + 81, 0, 16);
 					st_cur->wpa.state |= 4;
-					st_cur->wpa.keyver = (uint8_t)(packet[z + 8 + 6] & 7);
+					st_cur->wpa.keyver = (uint8_t) (packet[z + 8 + 6] & 7);
 
 					memcpy(st_cur->wpa.stmac, st_cur->stmac, 6);
 
@@ -2019,8 +1964,7 @@ packet_recv(uint8_t * packet, size_t length, struct AP_conf * apc, int external)
 				/* check the extended IV flag */
 				/* WEP and we got the key */
 				if ((packet[z + 3] & 0x20) == 0 && opt.crypt == CRYPT_WEP
-					&& !lopt.caffelatte
-					&& !lopt.cf_attack)
+					&& !lopt.caffelatte && !lopt.cf_attack)
 				{
 					memcpy(K, packet + z, 3);
 					memcpy(K + 3, opt.wepkey, opt.weplen);
@@ -2166,8 +2110,8 @@ packet_recv(uint8_t * packet, size_t length, struct AP_conf * apc, int external)
 						   "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
 						   12); // fixed information
 					packet[z + 8]
-						= (uint8_t)((apc->interval) & 0xFF); // beacon interval
-					packet[z + 9] = (uint8_t)((apc->interval >> 8) & 0xFF);
+						= (uint8_t) ((apc->interval) & 0xFF); // beacon interval
+					packet[z + 9] = (uint8_t) ((apc->interval >> 8) & 0xFF);
 					memcpy(packet + z + 10, apc->capa, 2); // capability
 
 					// set timestamp
@@ -2179,7 +2123,7 @@ packet_recv(uint8_t * packet, size_t length, struct AP_conf * apc, int external)
 					for (i = 0; i < 8; i++)
 					{
 						packet[z + i]
-							= (uint8_t)((timestamp >> (i * 8)) & 0xFF);
+							= (uint8_t) ((timestamp >> (i * 8)) & 0xFF);
 					}
 
 					// insert tagged parameters
@@ -2213,10 +2157,10 @@ packet_recv(uint8_t * packet, size_t length, struct AP_conf * apc, int external)
 						}
 					}
 					packet[length + 2]
-						= (uint8_t)(((temp_channel > 255 || temp_channel < 1)
-									 && lopt.channel != 0)
-										? lopt.channel
-										: temp_channel);
+						= (uint8_t) (((temp_channel > 255 || temp_channel < 1)
+									  && lopt.channel != 0)
+										 ? lopt.channel
+										 : temp_channel);
 
 					length += 3;
 
@@ -2288,8 +2232,8 @@ packet_recv(uint8_t * packet, size_t length, struct AP_conf * apc, int external)
 						   "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
 						   12); // fixed information
 					packet[z + 8]
-						= (uint8_t)((apc->interval) & 0xFF); // beacon interval
-					packet[z + 9] = (uint8_t)((apc->interval >> 8) & 0xFF);
+						= (uint8_t) ((apc->interval) & 0xFF); // beacon interval
+					packet[z + 9] = (uint8_t) ((apc->interval >> 8) & 0xFF);
 					memcpy(packet + z + 10, apc->capa, 2); // capability
 
 					// set timestamp
@@ -2301,7 +2245,7 @@ packet_recv(uint8_t * packet, size_t length, struct AP_conf * apc, int external)
 					for (i = 0; i < 8; i++)
 					{
 						packet[z + i]
-							= (uint8_t)((timestamp >> (i * 8)) & 0xFF);
+							= (uint8_t) ((timestamp >> (i * 8)) & 0xFF);
 					}
 
 					// insert essid
@@ -2351,10 +2295,10 @@ packet_recv(uint8_t * packet, size_t length, struct AP_conf * apc, int external)
 						}
 					}
 					packet[length + 2]
-						= (uint8_t)(((temp_channel > 255 || temp_channel < 1)
-									 && lopt.channel != 0)
-										? lopt.channel
-										: temp_channel);
+						= (uint8_t) (((temp_channel > 255 || temp_channel < 1)
+									  && lopt.channel != 0)
+										 ? lopt.channel
+										 : temp_channel);
 
 					length += 3;
 
@@ -2776,7 +2720,7 @@ static THREAD_ENTRY(beacon_thread)
 
 	struct AP_conf apc;
 	struct timeval tv, tv1, tv2;
-	u_int64_t timestamp;
+	uint64_t timestamp;
 	uint8_t beacon[512];
 	size_t beacon_len = 0;
 	int seq = 0, i = 0, n = 0;
@@ -2870,10 +2814,11 @@ static THREAD_ENTRY(beacon_thread)
 				   12); // fixed information
 
 			beacon[beacon_len + 8]
-				= (uint8_t)((apc.interval * MAX(getESSIDcount(), 1))
-							& 0xFF); // beacon interval
-			beacon[beacon_len + 9] = (uint8_t)(
-				((apc.interval * MAX(getESSIDcount(), 1)) >> 8) & 0xFF);
+				= (uint8_t) ((apc.interval * MAX(getESSIDcount(), 1))
+							 & 0xFF); // beacon interval
+			beacon[beacon_len + 9]
+				= (uint8_t) (((apc.interval * MAX(getESSIDcount(), 1)) >> 8)
+							 & 0xFF);
 			memcpy(beacon + beacon_len + 10, apc.capa, 2); // capability
 			beacon_len += 12;
 
@@ -2907,10 +2852,11 @@ static THREAD_ENTRY(beacon_thread)
 							temp_channel);
 				}
 			}
-			beacon[beacon_len + 2] = (uint8_t)(
-				((temp_channel > 255 || temp_channel < 1) && lopt.channel != 0)
-					? lopt.channel
-					: temp_channel);
+			beacon[beacon_len + 2]
+				= (uint8_t) (((temp_channel > 255 || temp_channel < 1)
+							  && lopt.channel != 0)
+								 ? lopt.channel
+								 : temp_channel);
 
 			beacon_len += 3;
 
@@ -2954,11 +2900,11 @@ static THREAD_ENTRY(beacon_thread)
 			// microsecond
 			for (i = 0; i < 8; i++)
 			{
-				beacon[24 + i] = (uint8_t)((timestamp >> (i * 8)) & 0xFF);
+				beacon[24 + i] = (uint8_t) ((timestamp >> (i * 8)) & 0xFF);
 			}
 
-			beacon[22] = (uint8_t)((seq << 4) & 0xFF);
-			beacon[23] = (uint8_t)((seq >> 4) & 0xFF);
+			beacon[22] = (uint8_t) ((seq << 4) & 0xFF);
+			beacon[23] = (uint8_t) ((seq >> 4) & 0xFF);
 
 			fflush(stdout);
 
@@ -3867,7 +3813,7 @@ int main(int argc, char * argv[])
 
 	dev.fd_rtc = -1;
 
-/* open the RTC device if necessary */
+	/* open the RTC device if necessary */
 
 #if defined(__i386__)
 #if defined(linux)

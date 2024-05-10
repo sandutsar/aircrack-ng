@@ -1,6 +1,4 @@
-/* C code for SSE2 (i386) optimized SHA1 - License: GPLv2
- * (c) nx5 <naplam33@msn.com>
- *
+/*
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
  * published by the Free Software Foundation; either version 2 of the
@@ -30,9 +28,14 @@
  * files in the program, then also delete it here.
  */
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <time.h>
+// POSIX does not require PATH_MAX (it may be defined), and GNU/Hurd doesn't provide it
+// https://www.gnu.org/software/hurd/community/gsoc/project_ideas/maxpath.html
+#ifndef _LOCAL_LIMITS_H_
+#define _LOCAL_LIMITS_H_
+#include <limits.h>
 
-#include <aircrack-ng/crypto/crypto.h>
+#ifndef PATH_MAX
+   #define PATH_MAX 4096
+#endif
+
+#endif

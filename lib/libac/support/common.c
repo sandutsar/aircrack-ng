@@ -53,11 +53,14 @@
 #include <assert.h>
 
 #include <aircrack-ng/support/common.h>
+#include <aircrack-ng/support/local_limits.h>
 
-#if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__)     \
-	|| defined(__MidnightBSD__)
+#if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)    \
+	|| defined(__DragonFly__) || defined(__MidnightBSD__)
 #include <sys/sysctl.h>
+#ifndef __NetBSD__
 #include <sys/user.h>
+#endif
 #endif
 #if (defined(_WIN32) || defined(_WIN64)) || defined(__CYGWIN32__)
 #include <io.h>
@@ -185,10 +188,15 @@ int is_string_number(const char * str)
 int get_ram_size(void)
 {
 	int ret = -1;
-#if defined(__FreeBSD__) || defined(__MidnightBSD__)
+#if defined (CTL_HW) && (defined(HW_PHYSMEM) || defined(HW_PHYSMEM64))
+#ifdef HW_PHYSMEM64
+	int mib[] = {CTL_HW, HW_PHYSMEM64};
+	uint64_t physmem;
+#else
 	int mib[] = {CTL_HW, HW_PHYSMEM};
+	size_t physmem;
+#endif
 	size_t len;
-	unsigned long physmem;
 
 	len = sizeof(physmem);
 
@@ -248,12 +256,6 @@ char * getVersion(const char * progname,
 		exit(1);
 	}
 
-	// Calculate and allocate buffer
-	size_t len = 100 + strlen(progname);
-	if (rev)
-	{
-		len += strlen(rev);
-	}
 	char *ret = NULL, *tmp = NULL;
 
 	// Major, minor version
@@ -331,9 +333,7 @@ int get_nb_cpus(void)
 #elif defined(__linux__)
 	char *s, *pos;
 	FILE * f;
-	// Reading /proc/cpuinfo is more reliable on current CPUs,
-	// so put it first and try the old method if this one fails
-	f = fopen("/proc/cpuinfo", "r");
+	f = fopen("/proc/stat", "r");
 
 	if (f != NULL)
 	{
@@ -341,39 +341,29 @@ int get_nb_cpus(void)
 
 		if (s != NULL)
 		{
-			// Get the latest value of "processor" element
-			// and increment it by 1 and it that value
-			// will be the number of CPU.
-			number = -2;
+			number = 0;
 
 			while (fgets(s, 80, f) != NULL)
 			{
-				pos = strstr(s, "processor");
-
-				if (pos == s)
+				pos = strstr(s, "cpu");
+				if (pos != NULL && pos + 3 <= s + 81)
 				{
-					pos = strchr(s, ':');
-
-					if (pos != NULL)
-					{
-						int tmp_number = atoi(pos + 1);
-						if (tmp_number > 0 && tmp_number <= 1024)
-							number = tmp_number;
-					}
+					if (isdigit(*(pos + 3)) != 0) ++number;
 				}
 			}
 
-			++number;
 			free(s);
 		}
 
 		fclose(f);
 	}
-#elif defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__)   \
-	|| defined(__MidnightBSD__)
-	// Not sure about defined(__DragonFly__) || defined(__NetBSD__) ||
-	// defined(__OpenBSD__) || defined(__APPLE__)
+
+#elif defined (CTL_HW) && (defined(HW_NCPU) || defined(HW_NCPUONLINE))
+#ifdef HW_NCPUONLINE
+	int mib[] = {CTL_HW, HW_NCPUONLINE};
+#else
 	int mib[] = {CTL_HW, HW_NCPU};
+#endif
 	size_t len;
 	unsigned long nbcpu;
 
@@ -383,9 +373,7 @@ int get_nb_cpus(void)
 	{
 		number = (int) nbcpu;
 	}
-#endif
-
-#ifdef _SC_NPROCESSORS_ONLN
+#elif defined(_SC_NPROCESSORS_ONLN)
 	// Try the usual method if _SC_NPROCESSORS_ONLN exist
 	if (number == -1)
 	{
@@ -415,7 +403,7 @@ int maccmp(unsigned char * mac1, unsigned char * mac2)
 	return 0;
 }
 
-/* Return -1 if it's not an hex value and return its value when it's a hex value
+/* Return -1 if it's not a hex value and return its value when it's a hex value
  */
 int hexCharToInt(unsigned char c)
 {
@@ -592,6 +580,66 @@ int getmac(const char * macAddress, const int strict, unsigned char * mac)
 	return 0;
 }
 
+int addMAC(pMAC_t pMAC, unsigned char * mac)
+{
+	pMAC_t cur = pMAC;
+
+	if (mac == NULL) return -1;
+
+	if (pMAC == NULL) return -1;
+
+	while (cur->next != NULL) cur = cur->next;
+
+	// alloc mem
+	cur->next = (pMAC_t) malloc(sizeof(struct MAC_list));
+	ALLEGE(cur->next != NULL);
+	cur = cur->next;
+
+	// set mac
+	memcpy(cur->mac, mac, 6);
+
+	cur->next = NULL;
+
+	return 0;
+}
+
+int getMACcount(pMAC_t pMAC)
+{
+	pMAC_t cur = pMAC;
+	int count = 0;
+
+	if (pMAC == NULL) return (-1);
+
+	while (cur->next != NULL)
+	{
+		cur = cur->next;
+		count++;
+	}
+
+	return (count);
+}
+
+int flushMACs(pMAC_t pMAC)
+{
+	pMAC_t old;
+	pMAC_t cur;
+	cur = pMAC;
+
+	if (pMAC == NULL) return -1;
+
+	while (cur->next != NULL)
+	{
+		old = cur->next;
+		cur->next = old->next;
+
+		memset(old->mac, 0, sizeof(old->mac));
+		old->next = NULL;
+		free(old);
+	}
+
+	return (0);
+}
+
 // Read a line of characters inputted by the user
 int readLine(char line[], int maxlength)
 {
@@ -664,6 +712,7 @@ char * get_current_working_directory(void)
 			if (ret) free(ret);
 			return (NULL);
 		}
+		memset(wd_realloc, 0, wd_size);
 		ret = wd_realloc;
 		wd_realloc = getcwd(ret, wd_size);
 		if (wd_realloc == NULL && errno != ERANGE)

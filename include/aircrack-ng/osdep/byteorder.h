@@ -1,7 +1,7 @@
 /*
  *  Compatibility header
  *
- *  Copyright (C) 2009-2020 Thomas d'Otreppe <tdotreppe@aircrack-ng.org>
+ *  Copyright (C) 2009-2022 Thomas d'Otreppe <tdotreppe@aircrack-ng.org>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -119,6 +119,12 @@ typedef uint8_t u_int8_t; //-V677
 #define __cpu_to_le16(x) (x)
 
 #define AIRCRACK_NG_BYTE_ORDER_DEFINED
+
+#endif
+
+#if defined (__gnu_hurd__)
+#include <endian.h>
+#include <stdint.h>
 
 #endif
 

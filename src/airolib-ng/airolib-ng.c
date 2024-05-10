@@ -43,9 +43,7 @@
 #include <string.h>
 #include <sqlite3.h>
 #include <sys/time.h>
-#include <sys/types.h>
 #include <sys/stat.h>
-#include <unistd.h>
 #include <getopt.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -109,7 +107,7 @@ static void print_help(const char * msg)
 		   EXPORT_ESSID);
 	free(version_info);
 
-	if (msg && strlen(msg) > 0)
+	if (msg && *msg != '\0')
 	{
 		printf("%s", msg);
 		puts("");
@@ -752,7 +750,7 @@ static void export_cowpatty(sqlite3 * db, char * essid, char * filename)
 		return;
 	}
 
-	if (filename == NULL || strlen(filename) == 0)
+	if (filename == NULL || *filename == '\0')
 	{
 		printf("Invalid filename (NULL)");
 		return;
@@ -1052,8 +1050,8 @@ sql_calcpmk(sqlite3_context * context, int argc, sqlite3_value ** values)
 	REQUIRE(values != NULL);
 
 	unsigned char pmk[40];
-	char * passwd = (char *) sqlite3_value_blob(values[1]);
-	char * essid = (char *) sqlite3_value_blob(values[0]);
+	const uint8_t * passwd = (const uint8_t *) sqlite3_value_blob(values[1]);
+	const uint8_t * essid = (const uint8_t *) sqlite3_value_blob(values[0]);
 	if (argc < 2 || passwd == 0 || essid == 0)
 	{
 		sqlite3_result_error(
@@ -1321,7 +1319,7 @@ int main(int argc, char ** argv)
 	signal(SIGTERM, sighandler);
 
 	option = getopt_long(
-		argc, argv, "bc:d:e:hi:s:t:v:", long_options, &option_index);
+		argc - 1, argv + 1, "bc:d:e:hi:s:t:v:", long_options, &option_index);
 
 	if (option > 0)
 	{
